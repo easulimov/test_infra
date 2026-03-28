@@ -1,0 +1,15 @@
+---
+# Основные параметры домена
+ipaserver_domain: sea.local
+ipaserver_realm: SEA.LOCAL
+ipaserver_hostname: freeipa01.sea.local
+
+# Настройка DNS
+ipaserver_setup_dns: yes
+ipaserver_forwarders:
+  - 77.88.8.1
+  - 8.8.8.8
+
+# Отключение NTP (аналог --no-ntp)
+ipaserver_ntp_servers: []
+ipaserver_ntp_pool: ""

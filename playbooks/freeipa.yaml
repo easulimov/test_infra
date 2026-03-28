@@ -1,0 +1,11 @@
+---
+- name: Установка FreeIPA Server (аналог ipa-server-install)
+  hosts: ipaserver
+  become: yes
+  vars_files:
+    - var_files/freeipa/freeipa_vars.yml
+    - var_files/freeipa/freeipa_secrets.yml
+
+  roles:
+    - role: freeipa.ansible_freeipa.ipaserver
+      state: present

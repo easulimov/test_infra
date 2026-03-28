@@ -1,0 +1,18 @@
+# Используются серверы из FreeIPA (заменено Ansible)
+{% for server in ntp_servers %}
+server {{ server }} iburst
+{% endfor %}
+
+# Запись отставания времени в файл
+driftfile /var/lib/chrony/drift
+
+makestep 1.0 3
+
+# Включить RTC (аппаратные часы)
+rtcsync
+
+# Разрешить обновления от клиентов (по умолчанию нет)
+# allow 192.168.0.0/16
+
+# Логи
+logdir /var/log/chrony

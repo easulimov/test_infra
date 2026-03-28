@@ -1,0 +1,54 @@
+---
+- name: Update all packages
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+    update_cache: yes
+
+- name: Install required packages
+  ansible.builtin.dnf:
+    name: "{{ packages_to_install }}"
+    state: present
+
+- name: Disable firewalld service
+  ansible.builtin.systemd:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Disable SELinux in configuration (persistent)
+  ansible.builtin.lineinfile:
+    path: /etc/selinux/config
+    regexp: '^SELINUX='
+    line: 'SELINUX=disabled'
+  notify: reboot host
+
+- name: Apply SELinux disable immediately (until reboot)
+  ansible.builtin.command:
+    cmd: setenforce 0
+  ignore_errors: yes
+
+- name: Configure chrony
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart chrony
+
+- name: Ensure chrony is enabled and running
+  ansible.builtin.systemd:
+    name: chronyd
+    state: started
+    enabled: yes
+
+- name: Flush handlers to apply changes before reboot
+  ansible.builtin.meta: flush_handlers
+
+- name: Reboot host
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    pre_reboot_delay: 10
+    post_reboot_delay: 30
+    msg: "Reboot initiated by Ansible (osconfig role)"

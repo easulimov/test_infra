@@ -1,0 +1,17 @@
+---
+# Список пакетов для установки
+packages_to_install:
+  - wget
+  - vim-enhanced
+  - curl
+  - jq
+  - bind-utils          # dns-tools
+  - net-tools           # net-utils
+  - chrony
+
+# NTP-серверы для chrony
+ntp_servers:
+  - ntp1.vniiftri.ru
+  - ntp2.vniiftri.ru
+  - ntp3.vniiftri.ru
+  - ntp4.vniiftri.ru
