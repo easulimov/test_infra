@@ -8,6 +8,11 @@ packages_to_install:
   - bind-utils          # dns-tools
   - net-tools           # net-utils
   - chrony
+  - tar
+  - zip
+  - unzip
+  - nmap-ncat
+  - nmap
 
 # NTP-серверы для chrony
 ntp_servers:
