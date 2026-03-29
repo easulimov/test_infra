@@ -8,6 +8,14 @@ all:
       hosts:
         freeipa01.sea.local:
           ansible_host: 192.168.8.80
+    vault:
+      hosts:
+        vault.sea.local:
+          ansible_host: 192.168.8.83
+    psql:
+      hosts:
+        vault.sea.local:
+          ansible_host: 192.168.8.84
   vars:
     # Глобальные переменные для всех хостов
     ansible_python_interpreter: /usr/bin/python3
