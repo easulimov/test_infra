@@ -14,7 +14,7 @@ all:
           ansible_host: 192.168.8.83
     psql:
       hosts:
-        vault.sea.local:
+        psql01.sea.local:
           ansible_host: 192.168.8.84
   vars:
     # Глобальные переменные для всех хостов
