@@ -13,6 +13,7 @@ packages_to_install:
   - unzip
   - nmap-ncat
   - nmap
+  - tcpdump
 
 # NTP-серверы для chrony
 ntp_servers:
