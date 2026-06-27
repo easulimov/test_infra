@@ -1,0 +1,17 @@
+creds/
+pass.txt
+ca/pass_ipa.sh
+ca/certs
+# Ignore entire VS Code folder by default
+.vscode/*
+
+# Except shareable team configurations (Optional: remove '!' to ignore completely)
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/code-workspace
+
+# Ignore local history and workspace state files
+.history/
+*.code-search
