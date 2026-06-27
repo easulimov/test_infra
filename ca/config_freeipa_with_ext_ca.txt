@@ -108,43 +108,97 @@ Import-Certificate -FilePath ".\sea_local_root_ca.crt" -CertStoreLocation Cert:\
 kinit easulimov
 
 
-# 1. СОЗДАНИЕ ВИРТУАЛЬНОГО ХОСТА И СЕРВИСНОГО ПРИНЦИПАЛА В FREEIPA
-# Регистрируем виртуальный хост для Kubernetes CA (с флагом --force, чтобы пропустить создание DNS-записи)
+# 1. ТОТАЛЬНАЯ ОЧИСТКА ВСЕХ РАНЕЕ СОЗДАННЫХ СУЩНОСТЕЙ, ПРОФИЛЕЙ И ФАЙЛОВ
+# Удаляем экспериментальный профиль Subca из базы FreeIPA
+ipa certprofile-del Subca || true
+
+# Удаляем временный конфигурационный файл профиля с диска
+rm -f /root/ca/Subca.cfg
+
+# Удаляем ранее созданную службу HTTP для очистки кэша сертификатов в LDAP
+ipa service-del HTTP/k8s-ca.sea.local || true
+
+# Принудительно выключаем созданный ранее УЦ, иначе система заблокирует удаление
+ipa ca-disable k8s-ca || true
+
+# Удаляем подчиненный центр сертификации из базы
+ipa ca-del k8s-ca || true
+
+# Удаляем виртуальный хост, чтобы исключить любые конфликты имен в базе
+ipa host-del k8s-ca.sea.local || true
+
+
+# 2. ИНИЦИАЛИЗАЦИЯ И СОЗДАНИЕ СВЕЖЕГО ОКРУЖЕНИЯ
+# Регистрируем виртуальный хост для Kubernetes CA заново
 ipa host-add k8s-ca.sea.local --force
 
-# Создаем стандартную службу HTTP с флагом --force, чтобы обойти автоматическую проверку DNS-записей
+# Создаем службу HTTP заново в абсолютно чистом виде
 ipa service-add HTTP/k8s-ca.sea.local --force
 
-# Разрешаем серверу FreeIPA (freeipa01.sea.local) управлять созданным сервисным принципалом
+# Разрешаем серверу FreeIPA (freeipa01.sea.local) управлять этой чистой службой
 ipa service-add-host HTTP/k8s-ca.sea.local --hosts=freeipa01.sea.local
 
 
-# 2. ГЕНЕРАЦИЯ КЛЮЧЕЙ И CSR С РАСШИРЕНИЯМИ ДЛЯ CA ЧЕРЕЗ OPENSSL
-# Генерация закрытого ключа для ClusterIssuer cert-manager
-openssl genrsa -out /root/ca/cert_manager_ca.key 4096
-
-# Создание запроса (CSR) с принудительным внедрением расширений CA (Basic Constraints и Key Usage) прямо в запрос
-openssl req -new -key /root/ca/cert_manager_ca.key -out /root/ca/cert_manager_ca.csr \
-  -subj "/O=SEA.LOCAL/CN=k8s-ca.sea.local" \
-  -addext "basicConstraints=critical,CA:TRUE" \
-  -addext "keyUsage=critical,digitalSignature,cRLSign,keyCertSign"
+# 3. СОЗДАНИЕ НАСТОЯСТЬЕГО SUB-CA ВНУТРИ FREEIPA
+# Создаем встроенный в архитектуру FreeIPA полноценный подчиненный CA (Lightweight Sub-CA).
+# Соблюдаем строгий порядок полей (CN=...,O=...), унаследованный от родительского УЦ.
+ipa ca-add k8s-ca --desc="Subordinate CA for Kubernetes cert-manager" --subject="CN=k8s-ca.sea.local,O=SEA.LOCAL"
 
 
-# 3. ВЫПУСК СЕРТИФИКАТА ЧЕРЕЗ ДЕФОЛТНЫЙ ПРОФИЛЬ FREEIPA
-# Отправка запроса во FreeIPA. Используем дефолтный профиль caIPAserviceCert, который сохранит наши CA-расширения из CSR.
-ipa cert-request /root/ca/cert_manager_ca.csr \
-  --profile-id=caIPAserviceCert \
-  --principal=HTTP/k8s-ca.sea.local \
-  --certificate-out=/root/ca/cert_manager_ca.crt
+# 4. ЭКСПОРТ ЛЕГИТИМНОГО СЕРТИФИКАТА СТАТУСА CA
+# Выгружаем готовый сертификат созданного суб-CA напрямую из базы FreeIPA.
+ipa ca-show k8s-ca --certificate-out=/root/ca/cert_manager_ca.crt
 
 
-# 4. СБОРКА ПОЛНОЙ ЦЕПОЧКИ ДОВЕРИЯ И ПЕРЕДАЧА В KUBERNETES
-# Склеивание полной цепочки доверия (Промежуточный CA FreeIPA + Наш корневой Root CA) для cert-manager
+# 5. АВТОМАТИЧЕСКАЯ ВЫГРУЗКА ЗАКРЫТОГО КЛЮЧА ИЗ БАЗЫ NSS С ПРАВИЛЬНЫМ ПАРСИНГОМ GUID
+# Шаг А: Извлекаем скрытый пароль внутренней базы NSS Dogtag в переменную
+NSS_PASSWORD=$(grep "internal=" /var/lib/pki/pki-tomcat/conf/password.conf | awk -F= '{print $2}')
+
+# Шаг Б: Записываем пароль во временный файл (pk12util требует файл для флага -k)
+echo "$NSS_PASSWORD" > /root/ca/nss_pin.txt
+
+# Шаг В: Записываем пароль для нового .p12 файла во второй временный файл (для флага -w)
+echo "Secret123" > /root/ca/p12_pin.txt
+
+# Шаг Г: ИСПРАВЛЕНО: Извлекаем строку и ювелирно срезаем суффикс доверия 'u,u,u' и лишние пробелы в конце
+NSS_NICKNAME=$(certutil -L -d /etc/pki/pki-tomcat/alias/ -k /root/ca/nss_pin.txt | grep "caSigningCert" | grep "u,u,u" | sed 's/[ \t]*u,u,u//g' | sed 's/[ \t]*$//')
+
+# Шаг Д: Экспортируем ключ, подставляя очищенный Nickname из переменной $NSS_NICKNAME
+pk12util -d /etc/pki/pki-tomcat/alias/ \
+  -o /root/ca/cert_manager_ca.p12 \
+  -n "$NSS_NICKNAME" \
+  -k /root/ca/nss_pin.txt \
+  -w /root/ca/p12_pin.txt
+
+# Шаг Е: Конвертируем полученный .p12 в чистый закрытый PEM-ключ для Kubernetes (без паролей)
+openssl pkcs12 -in /root/ca/cert_manager_ca.p12 \
+  -nocerts \
+  -nodes \
+  -password pass:Secret123 \
+  -out /root/ca/cert_manager_ca.key
+
+# Шаг Ж: Тотальное затирание временных файлов с паролями ради безопасности и очистка переменных
+rm -f /root/ca/cert_manager_ca.p12 /root/ca/nss_pin.txt /root/ca/p12_pin.txt
+unset NSS_PASSWORD NSS_NICKNAME
+
+
+# 6. ПРОВЕРКА СООТВЕТСТВИЯ КЛЮЧЕЙ СЕРТИФИКАТУ (ХЭШИ ДОЛЖНЫ ПОЛНОСТЬЮ СОВПАДАТЬ)
+openssl x509 -noout -modulus -in /root/ca/cert_manager_ca.crt | openssl md5
+openssl rsa -noout -modulus -in /root/ca/cert_manager_ca.key | openssl md5
+
+
+# 7. СБОРКА ИТОГОВОЙ ЦЕПОЧКИ ДЛЯ ПЕРЕДАЧИ В KUBERNETES
+# Склеиваем ваш промежуточный CA FreeIPA и корневой Root CA
 cat /root/ca/sea_local_intermediate_ca.crt /root/ca/sea_local_root_ca.crt > /root/ca/full_chain.crt
 
-# [Действие] Перенесите файлы из /root/ca/ (cert_manager_ca.key, cert_manager_ca.crt, full_chain.crt) на машину с доступом к kubectl
 
-# Создание секретного ключа (Secret) в пространстве имен cert-manager на стороне Kubernetes
+
+
+# === ШАГ 8: ПРИМЕНЕНИЕ В KUBERNETES КЛАНТЕ С CERT-MANAGER ===
+
+# [Действие] Перенесите файлы cert_manager_ca.key, cert_manager_ca.crt и full_chain.crt на машину с доступом к kubectl
+
+# Создание секретного ключа (Secret) в пространстве cert-manager
 kubectl create secret generic cert-manager-ca-secret \
   --namespace=cert-manager \
   --from-file=tls.key=cert_manager_ca.key \
@@ -161,8 +215,6 @@ spec:
   ca:
     secretName: cert-manager-ca-secret
 EOF
-
-
 
 
 -----------------------------------------------------------
