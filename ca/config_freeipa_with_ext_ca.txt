@@ -1,0 +1,186 @@
+# === ШАГ 1: СОЗДАНИЕ КОРНЕВОГО CA (ROOT CA) ===
+
+# Генерация приватного ключа корневого CA
+openssl genrsa -out sea_local_root_ca.key 4096
+
+# Создание самоподписанного сертификата Root CA (CN: sea.local Root CA)
+openssl req -x509 -new -nodes -key sea_local_root_ca.key -sha256 -days 3650 -out sea_local_root_ca.crt -subj "/CN=sea.local Root CA"
+
+
+# === ШАГ 2: ПОДГОТОВКА СИСТЕМЫ И ПАКЕТОВ ===
+
+# Обновление операционной системы AlmaLinux 9
+dnf update -y
+
+# Установка необходимых пакетов FreeIPA и утилит администрирования
+dnf install -y ipa-server ipa-server-dns ipa-admintools
+
+# Настройка локального разрешения имен в файле hosts
+cat >> /etc/hosts << EOF
+192.168.8.80   freeipa01.sea.local freeipa01
+EOF
+
+# Запись административных паролей в защищенные файлы
+chmod +x pass_ipa.sh
+./pass_ipa.sh
+
+
+# === ШАГ 3: ЗАПУСК УСТАНОВКИ FREEIPA (ЭТАП 1 ИЗ 2 — ГЕНЕРАЦИЯ CSR) ===
+
+# Экспорт паролей в переменные окружения для автоматической установки
+export IPA_DS_PASSWORD=$(cat /root/.ipa_ds_pass)
+export IPA_ADMIN_PASSWORD=$(cat /root/.ipa_admin_pass)
+
+# Инициализация установки с флагом --external-ca (инсталлятор создаст запрос /root/ipa.csr и остановится)
+# The next step is to get /root/ipa.csr signed by your CA and re-run /sbin/ipa-server-install as:
+# /sbin/ipa-server-install --external-cert-file=/path/to/signed_certificate --external-cert-file=/path/to/external_ca_certificate
+
+ipa-server-install \
+--hostname="freeipa01.sea.local" \
+--domain="sea.local" \
+--realm="SEA.LOCAL" \
+--ds-password="$IPA_DS_PASSWORD" \
+--admin-password="$IPA_ADMIN_PASSWORD" \
+--setup-dns \
+--forwarder="77.88.8.1" \
+--forwarder="8.8.8.8" \
+--no-ntp \
+--external-ca \
+--unattended
+
+# Очистка секретных переменных из окружения текущей сессии
+unset IPA_DS_PASSWORD IPA_ADMIN_PASSWORD
+
+
+# === ШАГ 4: ИСПРАВЛЕННОЕ ПОДПИСАНИЕ ЗАПРОСА И СОЗДАНИЕ ПРОМЕЖУТОЧНОГО CA ===
+
+# Подписание исходного запроса БЕЗ флага -subj, чтобы сохранить оригинальное имя 'CN=Certificate Authority,O=SEA.LOCAL'
+openssl x509 -req -in /root/ipa.csr \
+-CA /root/ca/sea_local_root_ca.crt \
+-CAkey /root/ca/sea_local_root_ca.key \
+-CAcreateserial \
+-out /root/ca/sea_local_intermediate_ca.crt \
+-days 1825 \
+-sha256 \
+-extfile <(echo -e "basicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,cRLSign,keyCertSign")
+
+
+# === ШАГ 5: ФИНАЛИЗАЦИЯ УСТАНОВКИ FREEIPA (ЭТАП 2 ИЗ 2) ===
+
+# Извлекаем пароли для передачи во второй этап инсталлятора
+export IPA_DS_PASSWORD=$(cat /root/.ipa_ds_pass)
+export IPA_ADMIN_PASSWORD=$(cat /root/.ipa_admin_pass)
+
+# Завершение установки с использованием абсолютных путей и обязательных флагов
+ipa-server-install \
+--external-cert-file=/root/ca/sea_local_intermediate_ca.crt \
+--external-cert-file=/root/ca/sea_local_root_ca.crt \
+--realm="SEA.LOCAL" \
+--ds-password="$IPA_DS_PASSWORD" \
+--admin-password="$IPA_ADMIN_PASSWORD" \
+--unattended
+
+# Финальная очистка переменных окружения
+unset IPA_DS_PASSWORD IPA_ADMIN_PASSWORD
+
+
+# === ШАГ 6: ДОБАВЛЕНИЕ КОРНЕВОГО СЕРТИФИКАТА В ДОВЕРЕННЫЕ НА КЛИЕНТАХ ===
+
+# --- Вариант А: Для клиентских серверов Linux (RHEL / AlmaLinux / Rocky) ---
+# [Действие] Скопируйте файл sea_local_root_ca.crt в директорию серверов-клиентов: /etc/pki/ca-trust/source/anchors/
+# Выполните команду на клиенте для обновления системного хранилища доверенных сертификатов:
+update-ca-trust
+
+# --- Вариант Б: Для клиентских серверов Linux (Ubuntu / Debian) ---
+# [Действие] Скопируйте файл sea_local_root_ca.crt в директорию Ubuntu-клиентов под расширением .crt: /usr/local/share/ca-certificates/
+# Выполните команду на клиенте для обновления хранилища:
+update-ca-certificates
+
+# --- Вариант В: Для клиентских рабочих станций Windows ---
+# [Действие] Перенесите файл sea_local_root_ca.crt на Windows-машину и выполните в PowerShell от имени Администратора:
+Import-Certificate -FilePath ".\sea_local_root_ca.crt" -CertStoreLocation Cert:\LocalMachine\Root
+
+
+
+# === ШАГ 7: СОЗДАНИЕ CA СЕРТИФИКАТА ДЛЯ CERT-MANAGER В KUBERNETES ===
+
+# Получение административного токена Kerberos во FreeIPA для выполнения дальнейших команд
+echo $IPA_ADMIN_PASSWORD | kinit admin
+
+# Генерация закрытого ключа для будущего ClusterIssuer cert-manager
+openssl genrsa -out cert_manager_ca.key 4096
+
+# Создание запроса (CSR) для cert-manager (CN: k8s.sea.local Intermediate CA)
+openssl req -new -key cert_manager_ca.key -out cert_manager_ca.csr -subj "/CN=k8s.sea.local Intermediate CA"
+
+# Отправка запроса во FreeIPA для подписания и выпуска промежуточного CA (встроенный профиль Subca)
+ipa cert-request cert_manager_ca.csr --profile-id=Subca --principal=host/freeipa01.sea.local --certificate-out=cert_manager_ca.crt
+
+# Склеивание полной цепочки доверия (Intermediate CA + Root CA) для передачи в cert-manager
+cat sea_local_intermediate_ca.crt sea_local_root_ca.crt > full_chain.crt
+
+# [Действие] Перенесите файлы cert_manager_ca.key, cert_manager_ca.crt и full_chain.crt на машину с доступом к кубернетесу (kubectl)
+
+# Создание секретного ключа (Secret) в пространстве cert-manager с ключом, сертификатом и цепочкой
+kubectl create secret generic cert-manager-ca-secret \
+  --namespace=cert-manager \
+  --from-file=tls.key=cert_manager_ca.key \
+  --from-file=tls.crt=cert_manager_ca.crt \
+  --from-file=ca.crt=full_chain.crt
+
+# Создание манифеста ClusterIssuer для cert-manager
+cat <<EOF | kubectl apply -f -
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sea-local-ca-issuer
+spec:
+  ca:
+    secretName: cert-manager-ca-secret
+EOF
+
+
+-----------------------------------------------------------
+# WEB
+
+https://freeipa01.sea.local/ipa/ui
+
+-----------------------------------------------------------
+# проверка установки
+
+# Kerberos ticket
+kinit admin
+klist
+
+# Статус сервисов
+ipactl status
+
+# Healthcheck (если доступен)
+dnf install -y ipa-healthcheck
+ipa-healthcheck --failures-only
+
+# DNS
+dig ipa-master.example.com @localhost
+dig _ldap._tcp.example.com SRV @localhost
+dig _kerberos._tcp.example.com SRV @localhost
+
+# LDAP (через Kerberos, НЕ anonymous!)
+ldapsearch -Y GSSAPI -b "dc=sea,dc=local" -LLL "(objectClass=*)" dn | head -20
+
+# Web UI
+curl -s -o /dev/null -w "%{http_code}\n" https://freeipa01.sea.local/ipa/ui
+
+
+
+-----------------------------------------------------------
+# Подключение клиентов
+
+# На клиенте
+dnf update -y
+dnf install -y ipa-client
+
+# Временная запись
+echo "192.168.8.80   freeipa01.sea.local freeipa01" >> /etc/hosts
+
+# Подключение
+ipa-client-install --enable-dns-updates --mkhomedir

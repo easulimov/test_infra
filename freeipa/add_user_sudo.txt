@@ -1,0 +1,42 @@
+# === ШАГ 1: АВТОРИЗАЦИЯ ВО FREEIPA ПОД АДМИНИСТРАТОРОМ ===
+
+# Извлечение сохраненного пароля и получение тикета Kerberos
+echo $(cat /root/.ipa_admin_pass) | kinit admin
+
+
+# === ШАГ 2: СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ И НАЗНАЧЕНИЕ ПРАВ ===
+
+# Создание учетной записи sadmin с паролем (интерактивный ввод пароля)
+ipa user-add sadmin --first=Super --last=Admin --password
+
+# Добавление пользователя sadmin в группу глобальных администраторов FreeIPA
+ipa group-add-member admins --users=sadmin
+
+
+# === ШАГ 3: НАСТРОЙКА SUDO БЕЗ ПАРОЛЯ ДЛЯ ГРУППЫ ADMINS ===
+
+# Создание нового правила Sudo с именем "admins_root_nopasswd"
+ipa sudorule-add admins_root_nopasswd --desc="Full root access without password for admins"
+
+# Указание, что правило применяется к группе пользователей admins (включая нашего sadmin)
+ipa sudorule-add-user admins_root_nopasswd --groups=admins
+
+# Настройка действия правила на ВСЕ хосты и ВСЕ команды (ALL) через категории
+ipa sudorule-mod admins_root_nopasswd --hostcat=all --cmdcat=all
+
+# Разрешение выполнять команды от имени ЛЮБОГО пользователя и ЛЮБОЙ группы (RunAs ALL)
+ipa sudorule-mod admins_root_nopasswd --runasusercat=all --runasgroupcat=all
+
+# ИСПРАВЛЕНО: Опция обернута в одинарные кавычки для экранирования восклицательного знака в Bash
+ipa sudorule-add-option admins_root_nopasswd --sudooption='!authenticate'
+
+
+# === ШАГ 4: СБРОС КЭША НА КЛИЕНТСКИХ МАШИНАХ (ПРИ НЕОБХОДИМОСТИ) ===
+
+# Правила Sudo во FreeIPA применяются к клиентам автоматически, 
+# но клиентские машины кэшируют их через службу sssd.
+# Чтобы применить настройку на клиенте мгновенно без ожидания, 
+# выполните на клиентском хосте команду сброса кэша:
+# sss_cache -E
+# или перезапустите службу:
+# systemctl restart sssd

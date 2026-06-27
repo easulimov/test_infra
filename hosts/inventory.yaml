@@ -16,6 +16,10 @@ all:
       hosts:
         psql01.sea.local:
           ansible_host: 192.168.8.84
+    nexus:
+      hosts:
+        nexus01.sea.local:
+          ansible_host: 192.168.8.84
   vars:
     # Глобальные переменные для всех хостов
     ansible_python_interpreter: /usr/bin/python3

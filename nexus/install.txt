@@ -1,0 +1,214 @@
+# ==============================================================================
+# ЭТАП 0: СОЗДАНИЕ ВЫДЕЛЕННОГО LVM ДЛЯ ДАННЫХ NEXUS
+# ==============================================================================
+
+# Установка утилит управления логическими томами LVM
+dnf install -y lvm2
+
+# ИНИЦИАЛИЗАЦИЯ ДИСКА (ВНИМАНИЕ: Замените /dev/sdb на имя вашего свободного диска/размера)
+pvcreate /dev/sdb
+
+# Создание группы томов с именем vg_nexus
+vgcreate vg_nexus /dev/sdb
+
+# Создание логического тома lv_data на всю емкость группы томов
+lvcreate -l 100%FREE -n lv_data vg_nexus
+
+# Форматирование созданного логического тома в файловую систему XFS
+mkfs.xfs /dev/vg_nexus/lv_data
+
+# Создание корневой директории для хранения данных обоих вариантов установки
+mkdir -p /opt/nexus-data
+
+# Добавление записи монтирования тома в fstab для автоматической сборки при загрузке системы
+echo '/dev/vg_nexus/lv_data /opt/nexus-data xfs defaults 0 0' >> /etc/fstab
+
+# Монтирование созданного LVM-раздела в систему
+mount -a
+
+
+# ==============================================================================
+# ВАРИАНТ 1: УСТАНОВКА ЧЕРЕЗ PODMAN + DOCKER-COMPOSE (ДАННЫЕ НА ДИСКЕ)
+# ==============================================================================
+
+# Установка контейнеризации Podman и пакета эмуляции команд Docker
+dnf install -y podman podman-docker
+
+# Включение и запуск системного сокета Podman для обеспечения совместимости с docker-compose
+systemctl enable --now podman.socket
+
+# Скачивание стабильного бинарного релиза оригинального утилиты docker-compose
+curl -SL https://github.com/docker/compose/releases/download/v2.26.0/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+
+# Назначение прав на выполнение для загруженного файла docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Создание символической ссылки в PATH для глобального вызова команды
+ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+
+# Создание структуры каталогов для контейнеров на примонтированном LVM
+mkdir -p /opt/nexus-data/container/nexus /opt/nexus-data/container/postgres /opt/nexus-data/container/initdb
+
+# Установка корректного владельца для папки Nexus (UID 200 — дефолтный пользователь в контейнере Sonatype)
+chown -R 200:200 /opt/nexus-data/container/nexus
+
+# Установка владельца для папки СУБД (UID 999 — стандартный пользователь в контейнере postgres)
+chown -R 999:999 /opt/nexus-data/container/postgres
+
+# Создание SQL скрипта для автоматического развертывания обязательного расширения pg_trgm (для Nexus 3.44+)
+cat << 'EOF' > /opt/nexus-data/container/initdb/init.sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+EOF
+
+# Создание конфигурационного файла docker-compose.yml (Флаги :Z необходимы для корректной разметки SELinux под Podman)
+cat << 'EOF' > /opt/nexus-data/container/docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: SecretContainerPassword123
+    volumes:
+      - /opt/nexus-data/container/postgres:/var/lib/postgresql/data:Z
+      - /opt/nexus-data/container/initdb:/docker-entrypoint-initdb.d:Z
+    ports:
+      - "5432:5432"
+
+  nexus:
+    image: sonatype/nexus3:latest
+    container_name: nexus-repo
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - INSTALL4J_ADD_VM_PARAMS=-Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.type=postgresql -Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://postgres:5432/nexus -Dnexus.datastore.nexus.username=nexus -Dnexus.datastore.nexus.password=SecretContainerPassword123
+    volumes:
+      - /opt/nexus-data/container/nexus:/nexus-data:Z
+    ports:
+      - "8081:8081"
+EOF
+
+# Переход в рабочую директорию первого варианта
+cd /opt/nexus-data/container
+
+# Запуск связки контейнеров приложения и базы данных в фоновом режиме
+docker-compose up -d
+
+
+# ==============================================================================
+# ВАРИАНТ 2: ПОЛНАЯ НАТИВНАЯ УСТАНОВКА И НАСТРОЙКА НА ALMALINUX 9
+# ==============================================================================
+
+# ВНИМАНИЕ: Если вы запускаете Вариант 2 на этом же хосте для теста — раскомментируйте и выполните строку ниже, чтобы освободить порты:
+# cd /opt/nexus-data/container && docker-compose down
+
+# Установка среды выполнения Java OpenJDK 11 (требование Nexus 3) и загрузчика wget
+dnf install -y java-11-openjdk-headless wget
+
+# Установка нативного сервера PostgreSQL 15 и сопутствующих модулей contrib из дистрибутива
+dnf install -y postgresql-server postgresql-contrib
+
+# Инициализация внутренней структуры новой кластерной базы данных PostgreSQL
+postgresql-setup --initdb
+
+# Изменение политик pg_hba.conf для разрешения подключений по паролю (scram-sha-256) на localhost вместо ident
+sed -i 's/host    all             all             127.0.0.1\/32            ident/host    all             all             127.0.0.1\/32            scram-sha-256/g' /var/lib/pgsql/data/pg_hba.conf
+sed -i 's/host    all             all             ::1\/128                 ident/host    all             all             ::1\/128                 scram-sha-256/g' /var/lib/pgsql/data/pg_hba.conf
+
+# Добавление нативной службы СУБД в автозапуск системы и её немедленный старт
+systemctl enable --now postgresql
+
+# Создание пользователя базы данных 'nexus' с паролем через локальный системный аккаунт postgres
+sudo -u postgres psql -c "CREATE USER nexus WITH PASSWORD 'SecretNativePassword123';"
+
+# Создание целевой базы данных 'nexus' с передачей прав владения пользователю nexus
+sudo -u postgres psql -c "CREATE DATABASE nexus OWNER nexus;"
+
+# Подключение к новой БД и ручная инициализация расширения pg_trgm
+sudo -u postgres psql -d nexus -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+
+# Создание в операционной системе изолированного системного пользователя nexus без домашней папки
+useradd -r -s /bin/bash nexus
+
+# Создание каталогов для размещения бинарных файлов и нативных изменяемых данных на LVM
+mkdir -p /opt/nexus
+mkdir -p /opt/nexus-data/native
+
+# Загрузка актуального дистрибутива последней версии Nexus 3 OSS с официального сервера Sonatype
+wget https://download.sonatype.com/nexus/3/latest-unix.tar.gz -O /tmp/nexus3.tar.gz
+
+# Распаковка скачанных бинарных файлов в каталог /opt/nexus со сжатием структуры уровней
+tar -xzf /tmp/nexus3.tar.gz -C /opt/nexus --strip-components=1
+
+# Корректировка конфигурационного файла karaf vmoptions для переноса рабочей даты, логов и temp на LVM
+sed -i 's|-Dkaraf.data=.*|-Dkaraf.data=/opt/nexus-data/native|g' /opt/nexus/bin/nexus.vmoptions
+sed -i 's|-Dkaraf.log=.*|-Dkaraf.log=/opt/nexus-data/native/log|g' /opt/nexus/bin/nexus.vmoptions
+sed -i 's|-Djava.io.tmpdir=.*|-Djava.io.tmpdir=/opt/nexus-data/native/tmp|g' /opt/nexus/bin/nexus.vmoptions
+
+# Добавление параметров активации и аутентификации внешней базы данных PostgreSQL в конец файла vmoptions
+cat << 'EOF' >> /opt/nexus/bin/nexus.vmoptions
+-Dnexus.datastore.enabled=true
+-Dnexus.datastore.nexus.type=postgresql
+-Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://127.0.0.1:5432/nexus
+-Dnexus.datastore.nexus.username=nexus
+-Dnexus.datastore.nexus.password=SecretNativePassword123
+EOF
+
+# Явное указание имени системного пользователя в конфигурационном скрипте запуска среды
+echo 'run_as_user="nexus"' > /opt/nexus/bin/nexus.rc
+
+# Рекурсивное назначение прав владения для учетной записи nexus на все созданные каталоги приложения
+chown -R nexus:nexus /opt/nexus
+chown -R nexus:nexus /opt/nexus-data/native
+
+# Корректировка контекстов безопасности SELinux для бинарных файлов и каталогов данных (чтобы не блокировался запуск)
+semanage fcontext -a -t bin_t "/opt/nexus/bin(/.*)?" 2>/dev/null || true
+semanage fcontext -a -t var_log_t "/opt/nexus-data/native/log(/.*)?" 2>/dev/null || true
+restorecon -R /opt/nexus /opt/nexus-data/native 2>/dev/null || true
+
+# Создание описания системной службы systemd для автоматического управления жизненным циклом Nexus
+cat << 'EOF' > /etc/systemd/system/nexus.service
+[Unit]
+Description=Nexus Repository Manager OSS (Native)
+After=network.target postgresql.service
+
+[Service]
+Type=forking
+LimitNOFILE=65536
+User=nexus
+Group=nexus
+ExecStart=/opt/nexus/bin/nexus start
+ExecStop=/opt/nexus/bin/nexus stop
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Обновление конфигурации менеджера systemd для регистрации новой созданной службы
+systemctl daemon-reload
+
+# Добавление созданного сервиса в автозагрузку операционной системы и запуск менеджера репозиториев
+systemctl enable --now nexus
+
+# Открытие входящего сетевого порта 8081 в активных зонах встроенного брандмауэра firewalld
+firewall-cmd --zone=public --add-port=8081/tcp --permanent
+
+# Принудительная перезагрузка конфигурации правил брандмауэра для применения изменений
+firewall-cmd --reload
+
+
+# ==============================================================================
+# ЭТАП ОПРЕДЕЛЕНИЯ ПЕРВОНАЧАЛЬНЫХ ПАРОЛЕЙ АДМИНИСТРАТОРА (ВЫПОЛНЯТЬ ПОСЛЕ СТАРТА)
+# ==============================================================================
+
+# Для просмотра пароля учетной записи admin Варианта 1 (Контейнеры) выполните (может потребоваться подождать 1-2 минуты):
+# cat /opt/nexus-data/container/nexus/admin.password
+
+# Для просмотра пароля учетной записи admin Варианта 2 (Нативная установка) выполните (может потребоваться подождать 1-2 минуты):
+# cat /opt/nexus-data/native/admin.password
