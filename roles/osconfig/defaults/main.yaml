@@ -15,6 +15,7 @@ packages_to_install:
   - nmap
   - tcpdump
   - ca-certificates
+  - lvm2
 
 # NTP-серверы для chrony
 ntp_servers:
