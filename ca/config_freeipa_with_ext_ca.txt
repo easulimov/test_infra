@@ -104,31 +104,54 @@ Import-Certificate -FilePath ".\sea_local_root_ca.crt" -CertStoreLocation Cert:\
 
 # === ШАГ 7: СОЗДАНИЕ CA СЕРТИФИКАТА ДЛЯ CERT-MANAGER В KUBERNETES ===
 
-# Получение административного токена Kerberos во FreeIPA для выполнения дальнейших команд
-echo $IPA_ADMIN_PASSWORD | kinit admin
+# Получение административного токена Kerberos во FreeIPA
+kinit easulimov
 
-# Генерация закрытого ключа для будущего ClusterIssuer cert-manager
-openssl genrsa -out cert_manager_ca.key 4096
 
-# Создание запроса (CSR) для cert-manager (CN: k8s.sea.local Intermediate CA)
-openssl req -new -key cert_manager_ca.key -out cert_manager_ca.csr -subj "/CN=k8s.sea.local Intermediate CA"
+# 1. СОЗДАНИЕ ВИРТУАЛЬНОГО ХОСТА И СЕРВИСНОГО ПРИНЦИПАЛА В FREEIPA
+# Регистрируем виртуальный хост для Kubernetes CA (с флагом --force, чтобы пропустить создание DNS-записи)
+ipa host-add k8s-ca.sea.local --force
 
-# Отправка запроса во FreeIPA для подписания и выпуска промежуточного CA (встроенный профиль Subca)
-ipa cert-request cert_manager_ca.csr --profile-id=Subca --principal=host/freeipa01.sea.local --certificate-out=cert_manager_ca.crt
+# Создаем стандартную службу HTTP с флагом --force, чтобы обойти автоматическую проверку DNS-записей
+ipa service-add HTTP/k8s-ca.sea.local --force
 
-# Склеивание полной цепочки доверия (Intermediate CA + Root CA) для передачи в cert-manager
-cat sea_local_intermediate_ca.crt sea_local_root_ca.crt > full_chain.crt
+# Разрешаем серверу FreeIPA (freeipa01.sea.local) управлять созданным сервисным принципалом
+ipa service-add-host HTTP/k8s-ca.sea.local --hosts=freeipa01.sea.local
 
-# [Действие] Перенесите файлы cert_manager_ca.key, cert_manager_ca.crt и full_chain.crt на машину с доступом к кубернетесу (kubectl)
 
-# Создание секретного ключа (Secret) в пространстве cert-manager с ключом, сертификатом и цепочкой
+# 2. ГЕНЕРАЦИЯ КЛЮЧЕЙ И CSR С РАСШИРЕНИЯМИ ДЛЯ CA ЧЕРЕЗ OPENSSL
+# Генерация закрытого ключа для ClusterIssuer cert-manager
+openssl genrsa -out /root/ca/cert_manager_ca.key 4096
+
+# Создание запроса (CSR) с принудительным внедрением расширений CA (Basic Constraints и Key Usage) прямо в запрос
+openssl req -new -key /root/ca/cert_manager_ca.key -out /root/ca/cert_manager_ca.csr \
+  -subj "/O=SEA.LOCAL/CN=k8s-ca.sea.local" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,digitalSignature,cRLSign,keyCertSign"
+
+
+# 3. ВЫПУСК СЕРТИФИКАТА ЧЕРЕЗ ДЕФОЛТНЫЙ ПРОФИЛЬ FREEIPA
+# Отправка запроса во FreeIPA. Используем дефолтный профиль caIPAserviceCert, который сохранит наши CA-расширения из CSR.
+ipa cert-request /root/ca/cert_manager_ca.csr \
+  --profile-id=caIPAserviceCert \
+  --principal=HTTP/k8s-ca.sea.local \
+  --certificate-out=/root/ca/cert_manager_ca.crt
+
+
+# 4. СБОРКА ПОЛНОЙ ЦЕПОЧКИ ДОВЕРИЯ И ПЕРЕДАЧА В KUBERNETES
+# Склеивание полной цепочки доверия (Промежуточный CA FreeIPA + Наш корневой Root CA) для cert-manager
+cat /root/ca/sea_local_intermediate_ca.crt /root/ca/sea_local_root_ca.crt > /root/ca/full_chain.crt
+
+# [Действие] Перенесите файлы из /root/ca/ (cert_manager_ca.key, cert_manager_ca.crt, full_chain.crt) на машину с доступом к kubectl
+
+# Создание секретного ключа (Secret) в пространстве имен cert-manager на стороне Kubernetes
 kubectl create secret generic cert-manager-ca-secret \
   --namespace=cert-manager \
   --from-file=tls.key=cert_manager_ca.key \
   --from-file=tls.crt=cert_manager_ca.crt \
   --from-file=ca.crt=full_chain.crt
 
-# Создание манифеста ClusterIssuer для cert-manager
+# Создание манифеста глобального ClusterIssuer для cert-manager
 cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -138,6 +161,8 @@ spec:
   ca:
     secretName: cert-manager-ca-secret
 EOF
+
+
 
 
 -----------------------------------------------------------
