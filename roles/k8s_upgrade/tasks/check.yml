@@ -19,7 +19,7 @@
   register: kubelet_ver_out
 
 - name: Get current cri-o version
-  ansible.builtin.command: crio --version
+  ansible.builtin.shell: crio --version | head -1 | awk '{print $NF}'
   register: crio_ver_out
   ignore_errors: yes
 
@@ -31,7 +31,7 @@
          if kubectl_ver_out.stdout | default('') != ''
          else '' }}
     kubelet_installed: "{{ kubelet_ver_out.stdout | regex_replace('Kubernetes ', '') | trim }}"
-    crio_installed: "{{ crio_ver_out.stdout | regex_replace('crio version ', '') | trim }}"
+    crio_installed: "{{ crio_ver_out.stdout | trim }}"
 
 - name: Set target versions from extra vars
   ansible.builtin.set_fact:

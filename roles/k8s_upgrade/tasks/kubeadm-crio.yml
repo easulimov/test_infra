@@ -23,8 +23,11 @@
       ansible.builtin.rpm_key:
         key: "https://repo.seaspace.name:48443/repositories/isv:/cri-o:/stable:/{{ crio_repo_minor }}/rpm/repodata/repomd.xml.key"
         state: present
-    - name: Clean and refresh DNF cache
-      ansible.builtin.command: dnf clean all && dnf makecache --enablerepo kubernetes,cri-o
+    - name: Clean DNF cache
+      ansible.builtin.command: dnf clean all
+      changed_when: false
+    - name: Refresh DNF cache for enabled repos
+      ansible.builtin.command: dnf makecache --enablerepo kubernetes,cri-o
       changed_when: false
   when: need_pkg_update
 
