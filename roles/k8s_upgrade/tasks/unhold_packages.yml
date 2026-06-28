@@ -7,3 +7,10 @@
   ansible.builtin.command: dnf versionlock delete kubeadm kubelet kubectl cri-o
   when: ansible_os_family == 'RedHat'
   ignore_errors: yes
+
+- name: Temporarily disable global exclude in dnf.conf (RedHat)
+  ansible.builtin.replace:
+    path: /etc/dnf/dnf.conf
+    regexp: '^(exclude=.*)$'
+    replace: '#\1'
+  when: ansible_os_family == 'RedHat'
