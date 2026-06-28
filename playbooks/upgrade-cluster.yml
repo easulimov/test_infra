@@ -7,11 +7,11 @@
   tasks:
     - name: Check info version
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: check.yml
     - name: Prepare exact packages and upgrade kubeadm/cri-o
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: kubeadm-crio.yml
 
 - name: "kubeadm and cri-o upgrade other masters"
@@ -22,11 +22,11 @@
   tasks:
     - name: Check info version
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: check.yml
     - name: Upgrade kubeadm/cri-o on other masters
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: kubeadm-crio.yml
 
 - name: "upgrade kubelet and kubectl on masters"
@@ -37,11 +37,11 @@
   tasks:
     - name: Check info version
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: check.yml
     - name: Upgrade kubelet and kubectl
       ansible.builtin.include_role:
-        name: upgrade-k8s
+        name: k8s_upgrade
         tasks_from: kubelet-kubectl.yml
 
 - name: "upgrade worker nodes"
@@ -50,4 +50,4 @@
   hosts: workers
   serial: 1
   roles:
-    - upgrade-k8s
+    - k8s_upgrade
