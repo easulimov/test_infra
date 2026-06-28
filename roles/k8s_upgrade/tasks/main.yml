@@ -1,0 +1,9 @@
+---
+- name: Configure repositories for target versions
+  ansible.builtin.include_tasks: repos.yml
+
+- name: Include OS detection, version checks, and set package names
+  ansible.builtin.include_tasks: check.yml
+
+- name: Execute upgrade tasks for the node role
+  ansible.builtin.include_tasks: "{{ upgrade_role }}.yml"

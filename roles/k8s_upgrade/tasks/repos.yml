@@ -1,0 +1,23 @@
+---
+- name: Ensure Kubernetes repo is configured for target minor version
+  ansible.builtin.template:
+    src: k8s.repo.j2
+    dest: /etc/yum.repos.d/k8s.repo
+    owner: root
+    group: root
+    mode: 0644
+  when: ansible_os_family == 'RedHat'
+
+- name: Ensure CRI-O repo is configured for target minor version
+  ansible.builtin.template:
+    src: cri-o.repo.j2
+    dest: /etc/yum.repos.d/cri-o.repo
+    owner: root
+    group: root
+    mode: 0644
+  when: ansible_os_family == 'RedHat'
+
+- name: Clean DNF cache after repo changes
+  ansible.builtin.command: dnf clean all
+  changed_when: false
+  when: ansible_os_family == 'RedHat'

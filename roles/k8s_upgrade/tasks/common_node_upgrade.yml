@@ -1,0 +1,70 @@
+---
+- name: Unhold packages before upgrade
+  ansible.builtin.include_tasks: unhold_packages.yml
+  when: need_pkg_update
+
+- name: Install kubeadm and cri-o (Debian)
+  ansible.builtin.apt:
+    name:
+      - "{{ kubeadm_pkg }}"
+      - "{{ crio_pkg }}"
+    state: present
+    update_cache: yes
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'Debian'
+
+- name: Install kubeadm and cri-o (RedHat)
+  ansible.builtin.dnf:
+    name:
+      - "{{ kubeadm_pkg }}"
+      - "{{ crio_pkg }}"
+    state: present
+    disable_excludes: all
+    enablerepo: kubernetes,cri-o
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'RedHat'
+
+- name: Restart cri-o if updated
+  ansible.builtin.systemd:
+    name: cri-o
+    state: restarted
+    daemon_reload: yes
+  when: crio_ver_current != crio_target
+
+- name: Run kubeadm upgrade node
+  ansible.builtin.command: kubeadm upgrade node
+  when: need_pkg_update
+
+- name: Upgrade kubelet and kubectl (Debian)
+  ansible.builtin.apt:
+    name:
+      - "{{ kubelet_pkg }}"
+      - "{{ kubectl_pkg }}"
+    state: present
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'Debian'
+
+- name: Upgrade kubelet and kubectl (RedHat)
+  ansible.builtin.dnf:
+    name:
+      - "{{ kubelet_pkg }}"
+      - "{{ kubectl_pkg }}"
+    state: present
+    disable_excludes: all
+    enablerepo: kubernetes,cri-o
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'RedHat'
+
+- name: Restart kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: yes
+  when: need_pkg_update
+
+- name: Hold packages after upgrade
+  ansible.builtin.include_tasks: hold_packages.yml

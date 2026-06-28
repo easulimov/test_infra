@@ -1,0 +1,29 @@
+---
+- name: Upgrade first control plane node
+  hosts: masters[0]
+  gather_facts: yes
+  become: yes
+  vars:
+    upgrade_role: first_master
+  roles:
+    - k8s_upgrade
+
+- name: Upgrade remaining control plane nodes
+  hosts: masters[1:]
+  serial: 1
+  gather_facts: yes
+  become: yes
+  vars:
+    upgrade_role: other_master
+  roles:
+    - k8s_upgrade
+
+- name: Upgrade worker nodes
+  hosts: workers
+  serial: "{{ worker_serial | default(1) }}"
+  gather_facts: yes
+  become: yes
+  vars:
+    upgrade_role: worker
+  roles:
+    - k8s_upgrade

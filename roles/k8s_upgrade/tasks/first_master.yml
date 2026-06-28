@@ -1,0 +1,95 @@
+---
+- name: Unhold packages before upgrade
+  ansible.builtin.include_tasks: unhold_packages.yml
+  when: need_pkg_update
+
+- name: Update kubeadm and cri-o (Debian)
+  ansible.builtin.apt:
+    name:
+      - "{{ kubeadm_pkg }}"
+      - "{{ crio_pkg }}"
+    state: present
+    update_cache: yes
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'Debian'
+
+- name: Update kubeadm and cri-o (RedHat)
+  ansible.builtin.dnf:
+    name:
+      - "{{ kubeadm_pkg }}"
+      - "{{ crio_pkg }}"
+    state: present
+    disable_excludes: all
+    enablerepo: kubernetes,cri-o
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'RedHat'
+
+- name: Restart cri-o if it was updated
+  ansible.builtin.systemd:
+    name: cri-o
+    state: restarted
+    daemon_reload: yes
+  when: crio_ver_current != crio_target
+
+- name: Get current cluster server version
+  ansible.builtin.command: kubectl version --short | grep 'Server Version' | awk '{print $3}'
+  register: cluster_ver_out
+  changed_when: false
+
+- name: Display current server version
+  ansible.builtin.debug:
+    msg: "Current server version: {{ cluster_ver_out.stdout }}"
+
+- name: Run kubeadm upgrade plan
+  ansible.builtin.command: "kubeadm upgrade plan {{ k8s_ver }}"
+  register: upgrade_plan
+  when: cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+- name: Show upgrade plan output
+  ansible.builtin.debug:
+    var: upgrade_plan.stdout_lines
+  when: cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+- name: Apply kubeadm upgrade
+  ansible.builtin.command: "kubeadm upgrade apply {{ k8s_ver }} -y"
+  register: upgrade_apply
+  when: cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+- name: Show upgrade apply output
+  ansible.builtin.debug:
+    var: upgrade_apply.stdout_lines
+  when: cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+- name: Upgrade kubelet and kubectl (Debian)
+  ansible.builtin.apt:
+    name:
+      - "{{ kubelet_pkg }}"
+      - "{{ kubectl_pkg }}"
+    state: present
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'Debian'
+
+- name: Upgrade kubelet and kubectl (RedHat)
+  ansible.builtin.dnf:
+    name:
+      - "{{ kubelet_pkg }}"
+      - "{{ kubectl_pkg }}"
+    state: present
+    disable_excludes: all
+    enablerepo: kubernetes,cri-o
+  when:
+    - need_pkg_update
+    - ansible_os_family == 'RedHat'
+
+- name: Restart kubelet
+  ansible.builtin.systemd:
+    name: kubelet
+    state: restarted
+    daemon_reload: yes
+  when: (cluster_ver_out.stdout != "v{{ k8s_ver }}") or need_pkg_update
+
+- name: Hold packages after upgrade
+  ansible.builtin.include_tasks: hold_packages.yml

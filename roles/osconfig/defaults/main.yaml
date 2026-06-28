@@ -16,6 +16,8 @@ packages_to_install:
   - tcpdump
   - ca-certificates
   - lvm2
+  - dnf-plugins-core
+  - 'dnf-command(versionlock)'
 
 # NTP-серверы для chrony
 ntp_servers:
