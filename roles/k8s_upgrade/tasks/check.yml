@@ -10,8 +10,8 @@
   register: kubeadm_ver_out
   ignore_errors: yes
 
-- name: Get current kubectl version
-  ansible.builtin.command: kubectl version --client -o short
+- name: Get current kubectl version (JSON)
+  ansible.builtin.command: kubectl version --client -o json
   register: kubectl_ver_out
   ignore_errors: yes
 
@@ -27,7 +27,10 @@
 - name: Extract clean versions
   ansible.builtin.set_fact:
     kubeadm_ver: "{{ kubeadm_ver_out.stdout | trim }}"
-    kubectl_ver: "{{ kubectl_ver_out.stdout | regex_replace('Client Version: ', '') | trim }}"
+    kubectl_ver: >-
+      {{ (kubectl_ver_out.stdout | from_json).clientVersion.gitVersion
+         if kubectl_ver_out.stdout | default('') != ''
+         else '' }}
     kubelet_ver: "{{ kubelet_ver_out.stdout | regex_replace('Kubernetes ', '') | trim }}"
     crio_ver_current: "{{ crio_ver_out.stdout | regex_replace('crio version ', '') | trim }}"
 

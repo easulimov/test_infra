@@ -17,6 +17,18 @@
     mode: 0644
   when: ansible_os_family == 'RedHat'
 
+- name: Import Kubernetes GPG key
+  ansible.builtin.rpm_key:
+    key: "https://repo.seaspace.name:48443/core:/stable:/{{ k8s_repo_minor }}/rpm/repodata/repomd.xml.key"
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Import CRI-O GPG key
+  ansible.builtin.rpm_key:
+    key: "https://repo.seaspace.name:48443/repositories/isv:/cri-o:/stable:/{{ crio_repo_minor }}/rpm/repodata/repomd.xml.key"
+    state: present
+  when: ansible_os_family == 'RedHat'
+
 - name: Clean DNF cache after repo changes
   ansible.builtin.command: dnf clean all
   changed_when: false
