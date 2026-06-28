@@ -1,29 +1,53 @@
 ---
-- name: Upgrade first control plane node
-  hosts: masters[0]
-  gather_facts: yes
+- name: "kubeadm and cri-o upgrade first master"
   become: yes
-  vars:
-    upgrade_role: first_master
-  roles:
-    - k8s_upgrade
+  gather_facts: yes
+  hosts: masters[0]
+  serial: 1
+  tasks:
+    - name: Check info version
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: check.yml
+    - name: Prepare exact packages and upgrade kubeadm/cri-o
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: kubeadm-crio.yml
 
-- name: Upgrade remaining control plane nodes
+- name: "kubeadm and cri-o upgrade other masters"
+  become: yes
+  gather_facts: yes
   hosts: masters[1:]
   serial: 1
-  gather_facts: yes
-  become: yes
-  vars:
-    upgrade_role: other_master
-  roles:
-    - k8s_upgrade
+  tasks:
+    - name: Check info version
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: check.yml
+    - name: Upgrade kubeadm/cri-o on other masters
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: kubeadm-crio.yml
 
-- name: Upgrade worker nodes
+- name: "upgrade kubelet and kubectl on masters"
+  become: yes
+  gather_facts: yes
+  hosts: masters
+  serial: 1
+  tasks:
+    - name: Check info version
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: check.yml
+    - name: Upgrade kubelet and kubectl
+      ansible.builtin.include_role:
+        name: upgrade-k8s
+        tasks_from: kubelet-kubectl.yml
+
+- name: "upgrade worker nodes"
+  become: yes
+  gather_facts: yes
   hosts: workers
   serial: 1
-  gather_facts: yes
-  become: yes
-  vars:
-    upgrade_role: worker
   roles:
-    - k8s_upgrade
+    - upgrade-k8s

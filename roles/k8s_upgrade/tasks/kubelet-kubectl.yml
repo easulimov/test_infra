@@ -1,0 +1,69 @@
+---
+- name: "Upgrade kubelet and kubectl"
+  block:
+    - name: "Copy admin.conf to root on masters"
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: yes
+      when: inventory_hostname in groups['masters']
+
+    - name: "Drain node {{ inventory_hostname }}"
+      ansible.builtin.command: kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data
+      delegate_to: "{{ groups['masters'][0] }}"
+
+    - name: "Temporarily disable exclude in dnf.conf"
+      ansible.builtin.replace:
+        path: /etc/dnf/dnf.conf
+        regexp: '^(exclude=.*)$'
+        replace: '#\1'
+
+    - name: "Delete versionlock for kubelet and kubectl"
+      ansible.builtin.command: dnf versionlock delete kubelet kubectl
+      ignore_errors: yes
+
+    - name: "Install kubelet and kubectl exact versions"
+      ansible.builtin.dnf:
+        name:
+          - "{{ hostvars[groups['masters'][0]]['kubelet_pkg'] }}"
+          - "{{ hostvars[groups['masters'][0]]['kubectl_pkg'] }}"
+        state: present
+        enablerepo: kubernetes,cri-o
+        disable_excludes: all
+
+    - name: "Add versionlock for kubelet and kubectl"
+      ansible.builtin.command: dnf versionlock add kubelet kubectl
+
+    - name: "Re-enable exclude in dnf.conf"
+      ansible.builtin.replace:
+        path: /etc/dnf/dnf.conf
+        regexp: '^#(exclude=.*)$'
+        replace: '\1'
+
+    - name: "Restart kubelet"
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        daemon_reload: yes
+
+    - name: "Get node info after restart"
+      ansible.builtin.command: kubectl get node {{ inventory_hostname }} -o json
+      register: kubectl_get_node
+      delegate_to: "{{ groups['masters'][0] }}"
+
+    - name: "Reboot if kubelet version matches target"
+      ansible.builtin.reboot:
+        post_reboot_delay: 30
+      when:
+        - (kubectl_get_node.stdout | from_json).status.nodeInfo.kubeletVersion == 'v' + k8s_ver
+
+    - name: "Uncordon node {{ inventory_hostname }}"
+      ansible.builtin.command: kubectl uncordon {{ inventory_hostname }}
+      delegate_to: "{{ groups['masters'][0] }}"
+
+    - name: "Confirm transition to next node"
+      ansible.builtin.pause:
+        prompt: "Вы уверены, что хотите обновить следующий узел? Введите 'yes' для продолжения."
+  when:
+    - need_pkg_update
+    - (kubectl_installed != kubectl_target) or (kubelet_installed != kubelet_target)

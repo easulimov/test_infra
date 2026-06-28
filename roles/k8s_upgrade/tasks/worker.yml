@@ -1,3 +1,0 @@
----
-- name: Run common node upgrade for workers
-  ansible.builtin.include_tasks: common_node_upgrade.yml

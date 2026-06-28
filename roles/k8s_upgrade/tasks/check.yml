@@ -3,7 +3,6 @@
   ansible.builtin.dnf:
     name: "dnf-command(versionlock)"
     state: present
-  when: ansible_os_family == 'RedHat'
 
 - name: Get current kubeadm version
   ansible.builtin.command: kubeadm version -o short
@@ -26,15 +25,15 @@
 
 - name: Extract clean versions
   ansible.builtin.set_fact:
-    kubeadm_ver: "{{ kubeadm_ver_out.stdout | trim }}"
-    kubectl_ver: >-
+    kubeadm_installed: "{{ kubeadm_ver_out.stdout | trim }}"
+    kubectl_installed: >-
       {{ (kubectl_ver_out.stdout | from_json).clientVersion.gitVersion
          if kubectl_ver_out.stdout | default('') != ''
          else '' }}
-    kubelet_ver: "{{ kubelet_ver_out.stdout | regex_replace('Kubernetes ', '') | trim }}"
-    crio_ver_current: "{{ crio_ver_out.stdout | regex_replace('crio version ', '') | trim }}"
+    kubelet_installed: "{{ kubelet_ver_out.stdout | regex_replace('Kubernetes ', '') | trim }}"
+    crio_installed: "{{ crio_ver_out.stdout | regex_replace('crio version ', '') | trim }}"
 
-- name: Define target versions
+- name: Set target versions from extra vars
   ansible.builtin.set_fact:
     kubeadm_target: "v{{ k8s_ver }}"
     kubectl_target: "v{{ k8s_ver }}"
@@ -44,30 +43,19 @@
 - name: Determine if any package needs update
   ansible.builtin.set_fact:
     need_pkg_update: >-
-      {{ (kubeadm_ver != kubeadm_target) or
-         (kubectl_ver != kubectl_target) or
-         (kubelet_ver != kubelet_target) or
-         (crio_ver_current != crio_target) }}
+      {{ (kubeadm_installed != kubeadm_target) or
+         (kubectl_installed != kubectl_target) or
+         (kubelet_installed != kubelet_target) or
+         (crio_installed != crio_target) }}
 
-- name: Set OS family and repo minor versions
+- name: Set repo minor versions for templates
   ansible.builtin.set_fact:
-    os_family: "{{ ansible_os_family }}"
     k8s_repo_minor: "v{{ k8s_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
     crio_repo_minor: "v{{ crio_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
 
-- name: Set fallback package names (for Debian or if resolve fails)
-  ansible.builtin.set_fact:
-    kubeadm_pkg: "kubeadm{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
-    kubectl_pkg: "kubectl{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
-    kubelet_pkg: "kubelet{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
-    crio_pkg: "cri-o{% if ansible_os_family == 'Debian' %}={{ crio_ver }}-00{% else %}-{{ crio_ver }}{% endif %}"
-
-- name: Print resolved information
+- name: Print current vs target versions
   ansible.builtin.debug:
     msg:
-      - "OS Family: {{ os_family }}"
-      - "k8s_ver (input): {{ k8s_ver }}"
-      - "crio_ver (input): {{ crio_ver }}"
-      - "k8s_repo_minor: {{ k8s_repo_minor }}"
-      - "crio_repo_minor: {{ crio_repo_minor }}"
-      - "need_pkg_update: {{ need_pkg_update }}"
+      - "Current versions: kubeadm={{ kubeadm_installed }}, kubectl={{ kubectl_installed }}, kubelet={{ kubelet_installed }}, cri-o={{ crio_installed }}"
+      - "Target versions: kubeadm={{ kubeadm_target }}, kubectl={{ kubectl_target }}, kubelet={{ kubelet_target }}, cri-o={{ crio_target }}"
+      - "Need update: {{ need_pkg_update }}"

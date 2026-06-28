@@ -1,0 +1,127 @@
+---
+- name: "Prepare repos for target versions"
+  block:
+    - name: Ensure Kubernetes repo
+      ansible.builtin.template:
+        src: k8s.repo.j2
+        dest: /etc/yum.repos.d/k8s.repo
+        owner: root
+        group: root
+        mode: 0644
+    - name: Ensure CRI-O repo
+      ansible.builtin.template:
+        src: cri-o.repo.j2
+        dest: /etc/yum.repos.d/cri-o.repo
+        owner: root
+        group: root
+        mode: 0644
+    - name: Import Kubernetes GPG key
+      ansible.builtin.rpm_key:
+        key: "https://repo.seaspace.name:48443/core:/stable:/{{ k8s_repo_minor }}/rpm/repodata/repomd.xml.key"
+        state: present
+    - name: Import CRI-O GPG key
+      ansible.builtin.rpm_key:
+        key: "https://repo.seaspace.name:48443/repositories/isv:/cri-o:/stable:/{{ crio_repo_minor }}/rpm/repodata/repomd.xml.key"
+        state: present
+    - name: Clean and refresh DNF cache
+      ansible.builtin.command: dnf clean all && dnf makecache --enablerepo kubernetes,cri-o
+      changed_when: false
+  when: need_pkg_update
+
+- name: "Resolve exact package names on first master"
+  ansible.builtin.include_tasks: resolve_packages.yml
+  when:
+    - inventory_hostname in groups['masters'][0]
+    - need_pkg_update
+
+- name: "Upgrade cri-o and kubeadm versions"
+  block:
+    - name: "Temporarily disable exclude in dnf.conf"
+      ansible.builtin.replace:
+        path: /etc/dnf/dnf.conf
+        regexp: '^(exclude=.*)$'
+        replace: '#\1'
+
+    - name: "Delete versionlock for kubeadm and cri-o"
+      ansible.builtin.command: dnf versionlock delete kubeadm cri-o
+      ignore_errors: yes
+
+    - name: "Install kubeadm and cri-o exact versions"
+      ansible.builtin.dnf:
+        name:
+          - "{{ hostvars[groups['masters'][0]]['kubeadm_pkg'] }}"
+          - "{{ hostvars[groups['masters'][0]]['crio_pkg'] }}"
+        state: present
+        enablerepo: kubernetes,cri-o
+        disable_excludes: all
+
+    - name: "Add versionlock for kubeadm and cri-o"
+      ansible.builtin.command: dnf versionlock add kubeadm cri-o
+
+    - name: "Re-enable exclude in dnf.conf"
+      ansible.builtin.replace:
+        path: /etc/dnf/dnf.conf
+        regexp: '^#(exclude=.*)$'
+        replace: '\1'
+
+    - name: "Restart cri-o"
+      ansible.builtin.systemd:
+        name: cri-o
+        state: restarted
+  when:
+    - need_pkg_update
+    - (crio_installed != crio_target) or (kubeadm_installed != kubeadm_target)
+
+- name: "Upgrade k8s cluster with kubeadm"
+  block:
+    - name: "Get current cluster server version"
+      ansible.builtin.command: kubectl version --short | grep 'Server Version' | awk '{print $3}'
+      register: cluster_ver_out
+      changed_when: false
+
+    - name: "Display current cluster server version"
+      ansible.builtin.debug:
+        msg: "Current cluster server version: {{ cluster_ver_out.stdout }}"
+
+    - name: "kubeadm upgrade plan"
+      ansible.builtin.command: "kubeadm upgrade plan {{ k8s_ver }}"
+      register: upgrade_plan
+      when:
+        - inventory_hostname in groups['masters'][0]
+        - cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+    - name: "Print info from 'kubeadm upgrade plan'"
+      ansible.builtin.debug:
+        msg: "{{ upgrade_plan.stdout_lines }}"
+      when:
+        - inventory_hostname in groups['masters'][0]
+        - cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+    - name: "kubeadm upgrade apply v{{ k8s_ver }}"
+      ansible.builtin.command: "kubeadm upgrade apply {{ k8s_ver }} -y"
+      register: upgrade_apply
+      when:
+        - inventory_hostname in groups['masters'][0]
+        - cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+    - name: "Print info from 'kubeadm upgrade apply'"
+      ansible.builtin.debug:
+        msg: "{{ upgrade_apply.stdout_lines }}"
+      when:
+        - inventory_hostname in groups['masters'][0]
+        - cluster_ver_out.stdout != "v{{ k8s_ver }}"
+
+    - name: "kubeadm upgrade node"
+      ansible.builtin.command: kubeadm upgrade node
+      register: upgrade_node
+      when: inventory_hostname not in groups['masters'][0]
+
+    - name: "Print info from 'kubeadm upgrade node'"
+      ansible.builtin.debug:
+        msg: "{{ upgrade_node.stdout_lines }}"
+      when: inventory_hostname not in groups['masters'][0]
+  when:
+    - need_pkg_update
+    - current_k8s_cluster_version is defined
+    - current_k8s_cluster_version != ''
+    - current_k8s_cluster_version is version(k8s_ver, '!=')
