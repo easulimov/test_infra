@@ -20,7 +20,10 @@
       - "{{ kubeadm_pkg }}"
       - "{{ crio_pkg }}"
     state: present
-    enablerepo: kubernetes,cri-o
+    enablerepo:
+      - kubernetes
+      - cri-o
+    disable_excludes: main
   when:
     - need_pkg_update
     - ansible_os_family == 'RedHat'
@@ -77,7 +80,10 @@
       - "{{ kubelet_pkg }}"
       - "{{ kubectl_pkg }}"
     state: present
-    enablerepo: kubernetes,cri-o
+    enablerepo:
+      - kubernetes
+      - cri-o
+    disable_excludes: main
   when:
     - need_pkg_update
     - ansible_os_family == 'RedHat'

@@ -1,38 +1,34 @@
 ---
 - name: Get exact kubeadm package name from repo
   ansible.builtin.command: >
-    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
-    --whatprovides "kubeadm = {{ k8s_ver }}"
+    dnf repoquery --enablerepo=kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}" "kubeadm-{{ k8s_ver }}*"
   register: kubeadm_query
   changed_when: false
 
 - name: Get exact kubelet package name from repo
   ansible.builtin.command: >
-    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
-    --whatprovides "kubelet = {{ k8s_ver }}"
+    dnf repoquery --enablerepo=kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}" "kubelet-{{ k8s_ver }}*"
   register: kubelet_query
   changed_when: false
 
 - name: Get exact kubectl package name from repo
   ansible.builtin.command: >
-    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
-    --whatprovides "kubectl = {{ k8s_ver }}"
+    dnf repoquery --enablerepo=kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}" "kubectl-{{ k8s_ver }}*"
   register: kubectl_query
   changed_when: false
 
 - name: Get exact cri-o package name from repo
   ansible.builtin.command: >
-    dnf repoquery --enablerepo cri-o --latest-limit 1 --qf "%{name}-%{version}-%{release}"
-    --whatprovides "cri-o = {{ crio_ver }}"
+    dnf repoquery --enablerepo=cri-o --latest-limit 1 --qf "%{name}-%{version}-%{release}" "cri-o-{{ crio_ver }}*"
   register: crio_query
   changed_when: false
 
-- name: Override package names with exact versions
+- name: Clean architecture suffix if present
   ansible.builtin.set_fact:
-    kubeadm_pkg: "{{ kubeadm_query.stdout }}"
-    kubelet_pkg: "{{ kubelet_query.stdout }}"
-    kubectl_pkg: "{{ kubectl_query.stdout }}"
-    crio_pkg: "{{ crio_query.stdout }}"
+    kubeadm_pkg: "{{ kubeadm_query.stdout | default('kubeadm-' ~ k8s_ver) | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    kubelet_pkg: "{{ kubelet_query.stdout | default('kubelet-' ~ k8s_ver) | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    kubectl_pkg: "{{ kubectl_query.stdout | default('kubectl-' ~ k8s_ver) | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    crio_pkg: "{{ crio_query.stdout | default('cri-o-' ~ crio_ver) | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
 
 - name: Print exact package names
   ansible.builtin.debug:

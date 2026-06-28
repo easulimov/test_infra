@@ -14,13 +14,16 @@
     - need_pkg_update
     - ansible_os_family == 'Debian'
 
-- name: Install kubeadm and cri-o (RedHat)
+- name: Update kubeadm and cri-o (RedHat)
   ansible.builtin.dnf:
     name:
       - "{{ kubeadm_pkg }}"
       - "{{ crio_pkg }}"
     state: present
-    enablerepo: kubernetes,cri-o
+    enablerepo:
+      - kubernetes
+      - cri-o
+    disable_excludes: main
   when:
     - need_pkg_update
     - ansible_os_family == 'RedHat'
@@ -52,7 +55,10 @@
       - "{{ kubelet_pkg }}"
       - "{{ kubectl_pkg }}"
     state: present
-    enablerepo: kubernetes,cri-o
+    enablerepo:
+      - kubernetes
+      - cri-o
+    disable_excludes: main
   when:
     - need_pkg_update
     - ansible_os_family == 'RedHat'

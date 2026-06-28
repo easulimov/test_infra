@@ -30,5 +30,5 @@
   changed_when: false
 
 - name: Refresh DNF cache for Kubernetes and CRI-O repositories
-  ansible.builtin.command: dnf makecache --enablerepo kubernetes,cri-o
+  ansible.builtin.command: dnf makecache --enablerepo=kubernetes --enablerepo=cri-o
   changed_when: false
