@@ -20,7 +20,7 @@
 
 - name: Upgrade worker nodes
   hosts: workers
-  serial: "{{ worker_serial | default(1) }}"
+  serial: 1
   gather_facts: yes
   become: yes
   vars:

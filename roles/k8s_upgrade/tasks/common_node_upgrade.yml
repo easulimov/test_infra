@@ -1,4 +1,16 @@
 ---
+- name: Drain the node
+  ansible.builtin.shell: >
+    kubectl drain {{ inventory_hostname }} 
+    --ignore-daemonsets 
+    --delete-emptydir-data 
+  delegate_to: "{{ groups['masters'][0] }}"
+  register: drain_cmd
+  until: drain_cmd.rc == 0
+  retries: 5
+  delay: 15
+  when: need_pkg_update
+
 - name: Unhold packages before upgrade
   ansible.builtin.include_tasks: unhold_packages.yml
   when: need_pkg_update
@@ -68,3 +80,24 @@
 
 - name: Hold packages after upgrade
   ansible.builtin.include_tasks: hold_packages.yml
+  when: need_pkg_update
+
+- name: Reboot the node for a clean state
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 30
+  when: need_pkg_update
+
+- name: Uncordon the node
+  ansible.builtin.shell: kubectl uncordon {{ inventory_hostname }}
+  delegate_to: "{{ groups['masters'][0] }}"
+  register: uncordon_cmd
+  until: uncordon_cmd.rc == 0
+  retries: 5
+  delay: 10
+  when: need_pkg_update
+
+- name: Wait for administrator confirmation to proceed
+  ansible.builtin.pause:
+    prompt: "\n======================================================\nNode {{ inventory_hostname }} has been fully upgraded, rebooted, and uncordoned.\nPlease verify its state.\nPress ENTER or type 'yes' to continue to the next node.\n======================================================"
+  when: need_pkg_update
