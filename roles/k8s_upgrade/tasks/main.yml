@@ -2,9 +2,15 @@
 - name: Include OS detection, version checks, and set package names
   ansible.builtin.include_tasks: check.yml
 
-- name: Configure repositories for target versions
+- name: Configure repositories for target versions (RedHat)
   ansible.builtin.include_tasks: repos.yml
   when: ansible_os_family == 'RedHat'
+
+- name: Resolve exact package names for installation (RedHat)
+  ansible.builtin.include_tasks: resolve_packages.yml
+  when:
+    - ansible_os_family == 'RedHat'
+    - need_pkg_update | default(false)
 
 - name: Execute upgrade tasks for the node role
   ansible.builtin.include_tasks: "{{ upgrade_role }}.yml"

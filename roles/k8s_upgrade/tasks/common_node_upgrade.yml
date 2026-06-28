@@ -20,7 +20,6 @@
       - "{{ kubeadm_pkg }}"
       - "{{ crio_pkg }}"
     state: present
-    disable_excludes: all
     enablerepo: kubernetes,cri-o
   when:
     - need_pkg_update
@@ -53,7 +52,6 @@
       - "{{ kubelet_pkg }}"
       - "{{ kubectl_pkg }}"
     state: present
-    disable_excludes: all
     enablerepo: kubernetes,cri-o
   when:
     - need_pkg_update

@@ -55,14 +55,14 @@
     k8s_repo_minor: "v{{ k8s_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
     crio_repo_minor: "v{{ crio_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
 
-- name: Set package versions for installation
+- name: Set fallback package names (for Debian or if resolve fails)
   ansible.builtin.set_fact:
     kubeadm_pkg: "kubeadm{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
     kubectl_pkg: "kubectl{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
     kubelet_pkg: "kubelet{% if ansible_os_family == 'Debian' %}={{ k8s_ver }}-00{% else %}-{{ k8s_ver }}{% endif %}"
     crio_pkg: "cri-o{% if ansible_os_family == 'Debian' %}={{ crio_ver }}-00{% else %}-{{ crio_ver }}{% endif %}"
 
-- name: Print resolved package names and versions for verification
+- name: Print resolved information
   ansible.builtin.debug:
     msg:
       - "OS Family: {{ os_family }}"
@@ -70,8 +70,4 @@
       - "crio_ver (input): {{ crio_ver }}"
       - "k8s_repo_minor: {{ k8s_repo_minor }}"
       - "crio_repo_minor: {{ crio_repo_minor }}"
-      - "kubeadm_pkg: {{ kubeadm_pkg }}"
-      - "kubectl_pkg: {{ kubectl_pkg }}"
-      - "kubelet_pkg: {{ kubelet_pkg }}"
-      - "crio_pkg: {{ crio_pkg }}"
       - "need_pkg_update: {{ need_pkg_update }}"

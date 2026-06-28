@@ -1,0 +1,43 @@
+---
+- name: Get exact kubeadm package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
+    --whatprovides "kubeadm = {{ k8s_ver }}"
+  register: kubeadm_query
+  changed_when: false
+
+- name: Get exact kubelet package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
+    --whatprovides "kubelet = {{ k8s_ver }}"
+  register: kubelet_query
+  changed_when: false
+
+- name: Get exact kubectl package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo kubernetes --latest-limit 1 --qf "%{name}-%{version}-%{release}"
+    --whatprovides "kubectl = {{ k8s_ver }}"
+  register: kubectl_query
+  changed_when: false
+
+- name: Get exact cri-o package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo cri-o --latest-limit 1 --qf "%{name}-%{version}-%{release}"
+    --whatprovides "cri-o = {{ crio_ver }}"
+  register: crio_query
+  changed_when: false
+
+- name: Override package names with exact versions
+  ansible.builtin.set_fact:
+    kubeadm_pkg: "{{ kubeadm_query.stdout }}"
+    kubelet_pkg: "{{ kubelet_query.stdout }}"
+    kubectl_pkg: "{{ kubectl_query.stdout }}"
+    crio_pkg: "{{ crio_query.stdout }}"
+
+- name: Print exact package names
+  ansible.builtin.debug:
+    msg:
+      - "Resolved kubeadm package: {{ kubeadm_pkg }}"
+      - "Resolved kubelet package: {{ kubelet_pkg }}"
+      - "Resolved kubectl package: {{ kubectl_pkg }}"
+      - "Resolved cri-o package: {{ crio_pkg }}"
