@@ -9,6 +9,7 @@ debug:
   enabled: false
 
 # -- Отключение отдельного DaemonSet для Envoy (будет использоваться встроенный режим в агенте)
+# Не разворачивает отдельный DaemonSet для Envoy (L7-прокси). Вместо этого Envoy будет работать внутри агента Cilium (embedded mode).
 envoy:
   enabled: false
 
