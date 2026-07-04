@@ -1,6 +1,6 @@
 Установка CRDs
 ```bash
-helm install prometheus-operator-crds prometheus-community/prometheus-operator-crds \
+helm install prometheus-operator-crds helm/prometheus-community/prometheus-operator-crds \
   --namespace monitoring
 ```
 
