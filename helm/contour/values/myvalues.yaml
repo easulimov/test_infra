@@ -1,0 +1,39 @@
+# =============================================
+# Параметры для прокси (Envoy) – аналог ingress-nginx
+# =============================================
+envoy:
+  # Запуск подов Envoy только на control-plane узлах
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+  # Допуски для control-plane узлов
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+
+  service:
+    # Тип сервиса – LoadBalancer
+    type: LoadBalancer
+    # Аннотация для MetalLB (или совместимого балансировщика)
+    annotations:
+      metallb.universe.tf/loadBalancerIPs: "192.168.8.37"
+
+# =============================================
+# Включение поддержки Gateway API и Ingress
+# =============================================
+# Управление CRD Gateway API (установит их при необходимости)
+gatewayAPI:
+  manageCRDs: true
+
+# Конфигурация Contour
+contour:
+  # Управление CRD самого Contour (HTTPProxy, TLSCertificateDelegation и т.д.)
+  manageCRDs: true
+  # Настройка IngressClass
+  ingressClass:
+    create: true      # Создать ресурс IngressClass
+    default: true     # Сделать его классом по умолчанию
+
