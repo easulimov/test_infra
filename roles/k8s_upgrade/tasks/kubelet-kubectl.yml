@@ -10,6 +10,34 @@
         - (kubelet_pkg | default('') | length == 0) or
           (kubectl_pkg | default('') | length == 0)
 
+    - name: Check if /root/.kube directory exists
+      ansible.builtin.stat:
+        path: /root/.kube
+      register: kube_dir_stat
+      when: inventory_hostname in groups['masters']
+
+    - name: Create /root/.kube directory
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        owner: root
+        group: root
+        mode: '0770'
+      when:
+        - inventory_hostname in groups['masters']
+        - not kube_dir_stat.stat.exists
+
+    - name: Ensure /root/.kube/config file exists with correct permissions
+      ansible.builtin.file:
+        path: /root/.kube/config
+        state: touch
+        owner: root
+        group: root
+        mode: '0640'
+      when:
+        - inventory_hostname in groups['masters']
+        - not kube_dir_stat.stat.exists
+
     - name: "Copy admin.conf to root on masters"
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
