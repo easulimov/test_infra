@@ -9,7 +9,15 @@
       ansible.builtin.include_role:
         name: k8s_upgrade
         tasks_from: check.yml
-    - name: Prepare exact packages and upgrade kubeadm/cri-o
+    - name: Prepare repositories
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: prepare_repos.yml
+    - name: Resolve package versions
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: resolve_packages.yml
+    - name: Upgrade kubeadm/cri-o on first master
       ansible.builtin.include_role:
         name: k8s_upgrade
         tasks_from: kubeadm-crio.yml
@@ -24,6 +32,14 @@
       ansible.builtin.include_role:
         name: k8s_upgrade
         tasks_from: check.yml
+    - name: Prepare repositories
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: prepare_repos.yml
+    - name: Resolve package versions
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: resolve_packages.yml
     - name: Upgrade kubeadm/cri-o on other masters
       ansible.builtin.include_role:
         name: k8s_upgrade
@@ -39,6 +55,14 @@
       ansible.builtin.include_role:
         name: k8s_upgrade
         tasks_from: check.yml
+    - name: Prepare repositories
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: prepare_repos.yml
+    - name: Resolve package versions
+      ansible.builtin.include_role:
+        name: k8s_upgrade
+        tasks_from: resolve_packages.yml
     - name: Upgrade kubelet and kubectl
       ansible.builtin.include_role:
         name: k8s_upgrade

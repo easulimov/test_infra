@@ -2,10 +2,10 @@
 - name: Import check versions
   ansible.builtin.import_tasks: check.yml
 
-- name: Import check versions
+- name: Prepare repositories
   ansible.builtin.import_tasks: prepare_repos.yml
 
-- name: Import check versions
+- name: Resolve package versions
   ansible.builtin.import_tasks: resolve_packages.yml
 
 - name: Import kubeadm and cri-o upgrade
