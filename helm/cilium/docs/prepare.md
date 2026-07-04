@@ -40,11 +40,29 @@ kubectl delete clusterrole,clusterrolebinding -l app.kubernetes.io/part-of=ciliu
 kubectl delete configmap,secret,serviceaccount -n kube-system -l app.kubernetes.io/part-of=cilium --ignore-not-found
 kubectl delete deployment,daemonset -n kube-system -l app.kubernetes.io/part-of=cilium --ignore-not-found
 kubectl delete service,endpoints -n kube-system -l app.kubernetes.io/part-of=cilium --ignore-not-found
+
+kubectl delete sa cilium cilium-operator hubble-relay hubble-ui -n kube-system --ignore-not-found
+kubectl delete cm cilium-config -n kube-system --ignore-not-found
+kubectl delete secret cilium-ca cilium-identity hubble-relay-client-certs hubble-relay-server-certs hubble-server-certs hubble-ui-crypto-encryption-key -n kube-system --ignore-not-found
 ```
 
 #### Удаление кастомных ресурсов (CRD) Cilium, чтобы очистить остатки в API-сервере
 ```bash
 kubectl delete crd -l app.kubernetes.io/part-of=cilium --ignore-not-found
+```
+
+```bash
+kubectl delete crd ciliumcidrgroups.cilium.io --ignore-not-found
+kubectl delete crd ciliumclusterwidenetworkpolicies.cilium.io --ignore-not-found
+kubectl delete crd ciliumendpoints.cilium.io --ignore-not-found
+kubectl delete crd ciliumexternalworkloads.cilium.io --ignore-not-found
+kubectl delete crd ciliumidentities.cilium.io --ignore-not-found
+kubectl delete crd ciliuml2announcementpolicies.cilium.io --ignore-not-found
+kubectl delete crd ciliumloadbalancerippools.cilium.io --ignore-not-found
+kubectl delete crd ciliumnetworkpolicies.cilium.io --ignore-not-found
+kubectl delete crd ciliumnodeconfigs.cilium.io --ignore-not-found
+kubectl delete crd ciliumnodes.cilium.io --ignore-not-found
+kubectl delete crd ciliumpodippools.cilium.io --ignore-not-found
 ```
 
 ### 6. УДАЛЕНИЕ CONFIGMAP И DAEMONSET KUBE-PROXY ИЗ СИСТЕМЫ
