@@ -1,6 +1,15 @@
 ---
 - name: "Upgrade kubelet and kubectl"
   block:
+    - name: Fail if kubelet_pkg or kubectl_pkg is undefined or empty
+      ansible.builtin.fail:
+        msg: >
+          Required facts 'kubelet_pkg' and 'kubectl_pkg' must be defined and non-empty.
+          Ensure the package resolution step executed successfully on the first master.
+      when:
+        - (kubelet_pkg | default('') | length == 0) or
+          (kubectl_pkg | default('') | length == 0)
+
     - name: "Copy admin.conf to root on masters"
       ansible.builtin.copy:
         src: /etc/kubernetes/admin.conf
@@ -25,8 +34,8 @@
     - name: "Install kubelet and kubectl exact versions"
       ansible.builtin.dnf:
         name:
-          - "{{ hostvars[groups['masters'][0]]['kubelet_pkg'] }}"
-          - "{{ hostvars[groups['masters'][0]]['kubectl_pkg'] }}"
+          - "{{ kubelet_pkg }}"
+          - "{{ kubectl_pkg }}"
         state: present
         enablerepo: kubernetes,cri-o
         disable_excludes: all

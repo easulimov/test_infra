@@ -1,43 +1,39 @@
 ---
-  - name: Run package queries on the first master
-    block:
-      - name: Get exact kubeadm package name from repo
-        ansible.builtin.command: >
-          dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
-          --qf "%{name}-%{version}-%{release}" "kubeadm-{{ k8s_ver }}*"
-        register: kubeadm_query
-        changed_when: false
+- name: Get exact kubeadm package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
+    --qf "%{name}-%{version}-%{release}" "kubeadm-{{ k8s_ver }}*"
+  register: kubeadm_query
+  changed_when: false
 
-      - name: Get exact kubelet package name from repo
-        ansible.builtin.command: >
-          dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
-          --qf "%{name}-%{version}-%{release}" "kubelet-{{ k8s_ver }}*"
-        register: kubelet_query
-        changed_when: false
+- name: Get exact kubelet package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
+    --qf "%{name}-%{version}-%{release}" "kubelet-{{ k8s_ver }}*"
+  register: kubelet_query
+  changed_when: false
 
-      - name: Get exact kubectl package name from repo
-        ansible.builtin.command: >
-          dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
-          --qf "%{name}-%{version}-%{release}" "kubectl-{{ k8s_ver }}*"
-        register: kubectl_query
-        changed_when: false
+- name: Get exact kubectl package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo=kubernetes --disableexcludes=all --latest-limit 1
+    --qf "%{name}-%{version}-%{release}" "kubectl-{{ k8s_ver }}*"
+  register: kubectl_query
+  changed_when: false
 
-      - name: Get exact cri-o package name from repo
-        ansible.builtin.command: >
-          dnf repoquery --enablerepo=cri-o --disableexcludes=all --latest-limit 1
-          --qf "%{name}-%{version}-%{release}" "cri-o-{{ crio_ver }}*"
-        register: crio_query
-        changed_when: false
+- name: Get exact cri-o package name from repo
+  ansible.builtin.command: >
+    dnf repoquery --enablerepo=cri-o --disableexcludes=all --latest-limit 1
+    --qf "%{name}-%{version}-%{release}" "cri-o-{{ crio_ver }}*"
+  register: crio_query
+  changed_when: false
 
-      - name: Clean architecture suffix and set facts on first master
-        ansible.builtin.set_fact:
-          kubeadm_pkg: "{{ kubeadm_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
-          kubelet_pkg: "{{ kubelet_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
-          kubectl_pkg: "{{ kubectl_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
-          crio_pkg:   "{{ crio_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
-        delegate_facts: True
-    delegate_to: "{{ groups['masters'][0] }}"
-    run_once: true
+- name: Clean architecture suffix and set facts on first master
+  ansible.builtin.set_fact:
+    kubeadm_pkg: "{{ kubeadm_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    kubelet_pkg: "{{ kubelet_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    kubectl_pkg: "{{ kubectl_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+    crio_pkg:   "{{ crio_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
+  delegate_facts: True
 
 - name: "Copy resolved package names to other hosts"
   ansible.builtin.set_fact:
@@ -45,13 +41,3 @@
     kubelet_pkg: "{{ hostvars[groups['masters'][0]]['kubelet_pkg'] | default('') }}"
     kubectl_pkg: "{{ hostvars[groups['masters'][0]]['kubectl_pkg'] | default('') }}"
     crio_pkg:   "{{ hostvars[groups['masters'][0]]['crio_pkg']   | default('') }}"
-  when: inventory_hostname != groups['masters'][0]
-
-- name: Print resolved package names
-  ansible.builtin.debug:
-    msg:
-      - "Resolved exact packages:"
-      - "kubeadm: {{ kubeadm_pkg }}"
-      - "kubelet: {{ kubelet_pkg }}"
-      - "kubectl: {{ kubectl_pkg }}"
-      - "cri-o: {{ crio_pkg }}"

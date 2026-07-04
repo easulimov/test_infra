@@ -31,14 +31,17 @@
       changed_when: false
   when: need_pkg_update
 
-- name: "Resolve exact package names on first master"
-  ansible.builtin.include_tasks: resolve_packages.yml
-  when:
-    - inventory_hostname in groups['masters'][0]
-    - need_pkg_update
-
 - name: "Upgrade cri-o and kubeadm versions"
   block:
+    - name: Fail if kubeadm_pkg or crio_pkg is undefined or empty
+      ansible.builtin.fail:
+        msg: >
+          Required facts 'kubeadm_pkg' and 'crio_pkg' must be defined and non-empty.
+          Ensure the package resolution step executed successfully on the first master.
+      when:
+        - (kubeadm_pkg | default('') | length == 0) or
+          (crio_pkg   | default('') | length == 0)
+
     - name: "Temporarily disable exclude in dnf.conf"
       ansible.builtin.replace:
         path: /etc/dnf/dnf.conf
@@ -52,8 +55,8 @@
     - name: "Install kubeadm and cri-o exact versions"
       ansible.builtin.dnf:
         name:
-          - "{{ hostvars[groups['masters'][0]]['kubeadm_pkg'] }}"
-          - "{{ hostvars[groups['masters'][0]]['crio_pkg'] }}"
+          - "{{ kubeadm_pkg }}"
+          - "{{ crio_pkg }}"
         state: present
         enablerepo: kubernetes,cri-o
         disable_excludes: all
