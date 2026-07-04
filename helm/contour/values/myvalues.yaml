@@ -14,6 +14,25 @@ envoy:
       operator: Exists
       effect: NoSchedule
 
+  # Ресурсы Envoy
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Менеджер graceful shutdown (сайдкар Envoy)
+  shutdownManager:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
   service:
     # Тип сервиса – LoadBalancer
     type: LoadBalancer
@@ -34,6 +53,15 @@ contour:
   manageCRDs: true
   # Настройка IngressClass
   ingressClass:
-    create: true      # Создать ресурс IngressClass
-    default: true     # Сделать его классом по умолчанию
+    name: contour
+    create: true
+    default: true
 
+  # Ресурсы Contour
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
