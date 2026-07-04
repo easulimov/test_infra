@@ -198,6 +198,9 @@ cat /root/ca/sea_local_intermediate_ca.crt /root/ca/sea_local_root_ca.crt > /roo
 
 # [Действие] Перенесите файлы cert_manager_ca.key, cert_manager_ca.crt и full_chain.crt на машину с доступом к kubectl
 
+# Создание namespace
+kubectl create ns cert-manager
+
 # Создание секретного ключа (Secret) в пространстве cert-manager
 kubectl create secret generic cert-manager-ca-secret \
   --namespace=cert-manager \

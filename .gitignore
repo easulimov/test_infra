@@ -15,3 +15,5 @@ ca/certs
 # Ignore local history and workspace state files
 .history/
 *.code-search
+
+.render/

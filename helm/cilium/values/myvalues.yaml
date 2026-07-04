@@ -1,0 +1,184 @@
+# Узнать инфу
+# kubectl config view --minify 
+# kubectl get cm kubeadm-config -n kube-system -o jsonpath='{.data.ClusterConfiguration}'
+# cat /etc/keepalived/keepalived.conf
+# cat /etc/haproxy/haproxy.cfg
+
+# режим дебага
+debug:
+  enabled: false
+
+# -- Отключение отдельного DaemonSet для Envoy (будет использоваться встроенный режим в агенте)
+envoy:
+  enabled: false
+
+# Имя кластера для Cluster mesh
+cluster:
+  name: kubernetes
+
+# VIP адрес для подключения к kube-api-server (HA)
+k8sServiceHost: "192.168.8.40"
+# Порт для подключения к kube-api-server (HA)
+k8sServicePort: "8443"
+
+# -- Настройте замену kube-proxy в пути данных Cilium BPF. Ссылка: https://docs.cilium.io/en/stable/network/kubernetes/kubeproxy-free/
+kubeProxyReplacement: true
+# -- адрес привязки сервера healthz для замены kube-прокси.
+kubeProxyReplacementHealthzBindAddr: "0.0.0.0:10256"
+
+ipam:
+  operator:
+    # -- Пул IPv4-адресов, из которого Cilium будет выделять подсети для подов на нодах
+    clusterPoolIPv4PodCIDRList: ["10.244.0.0/16"]
+
+
+hubble:
+  # -- Включение Hubble (наблюдаемость сетевых потоков)
+  enabled: true
+  metrics:
+    # -- Включение сбора метрик Hubble (DNS, drop, tcp, flow, icmp, http)
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http
+    # -- Экспорт метрик в формате OpenMetrics
+    enableOpenMetrics: true
+    # -- Аннотации для сервиса метрик Hubble
+    serviceAnnotations: {}
+    serviceMonitor:
+      # -- Создать ServiceMonitor для сбора метрик Hubble
+      enabled: true
+      namespace: "monitoring"
+    dashboards:
+      # -- Включить Grafana-дашборды Hubble
+      enabled: true
+      namespace: "monitoring"
+      annotations:
+        grafana_folder: "Hubble"
+
+  relay:
+    # -- Включение Hubble Relay (агрегация потоков от всех агентов)
+    enabled: true
+    # -- Автоматический перезапуск подов Relay при изменении ConfigMap
+    rollOutPods: true
+    tls:
+      server:
+        # -- Отключение TLS для серверной части Relay (используется без шифрования)
+        enabled: false
+
+    pprof:
+      # -- Включение pprof-эндпоинта для Hubble Relay
+      enabled: true
+
+    prometheus:
+      # -- Включение метрик Prometheus для Hubble Relay
+      enabled: true
+      serviceMonitor:
+        # -- Создать ServiceMonitor для метрик Hubble Relay
+        enabled: true
+        namespace: "monitoring"
+    service:
+      # -- Использовать NodePort для доступа к Relay (порт 31234)
+      type: NodePort
+      nodePort: 31234
+
+  ui:
+    # -- Включение веб-интерфейса Hubble UI
+    enabled: true
+    standalone:
+      # -- Установка Hubble UI в автономном режиме (без проверки зависимостей)
+      enabled: true
+    # -- Автоматический перезапуск подов UI при изменении конфигурации
+    rollOutPods: true
+    service:
+      # -- Использовать NodePort для доступа к UI (порт 31235)
+      type: NodePort
+      nodePort: 31235
+    backend:
+      image:
+        # -- Не использовать дайджест образа (для удобства обновления)
+        useDigest: false
+    frontend:
+      image:
+        # -- Не использовать дайджест образа (для удобства обновления)
+        useDigest: false
+    ingress:
+      # -- Настройка Ingress для Hubble UI
+      enabled: true
+      annotations:
+        cert-manager.io/cluster-issuer: sea-local-ca-issuer
+      className: "nginx"
+      hosts:
+        - hubble.kubernetes.sea.local
+      tls:
+      - hosts:
+        - hubble.kubernetes.sea.local
+        secretName: hubble-cert
+
+# -- Отключение sidecar-контейнера cilium-monitor (устаревший)
+monitor:
+  enabled: false
+
+# -- Включение метрик Cilium агента для Prometheus
+prometheus:
+  enabled: true
+  # -- Порт для метрик агента Cilium
+  port: 9962
+  serviceMonitor:
+    # -- Создать ServiceMonitor для метрик агента
+    enabled: true
+    namespace: "monitoring"
+
+# -- Включение оператора Cilium (управление IPAM и т.д.)
+operator:
+  enabled: true
+  prometheus:
+    # -- Включение метрик оператора Cilium
+    enabled: true
+    serviceMonitor:
+      # -- Создать ServiceMonitor для метрик оператора
+      enabled: true
+      namespace: "monitoring"
+
+# Балансировщик L2
+l2announcements:
+  # -- Enable L2 announcements
+  enabled: false
+  # -- If a lease is not renewed for X duration, the current leader is considered dead, a new leader is picked
+  leaseDuration: 15s
+  # -- The interval at which the leader will renew the lease
+  leaseRenewDeadline: 15s
+  # -- The timeout between retries if renewal fails
+  leaseRetryPeriod: 2s
+
+# -- Включение поддержки externalIPs для сервисов
+externalIPs:
+  enabled: true
+
+l2podAnnouncements:
+  # -- Enable L2 pod announcements
+  enabled: false
+  # -- Interface used for sending Gratuitous ARP pod announcements
+  interface: ens160
+
+k8sClientRateLimit:
+  # -- The sustained request rate in requests per second.
+  qps: 50
+  # -- The burst request rate in requests per second.
+  # The rate limiter will allow short bursts with a higher rate.
+  burst: 100
+
+# -- Включение поддержки Local Redirect Policy
+localRedirectPolicy: true  
+
+
+# Отключаем встроенный IPAM для LoadBalancer-сервисов (так как используется MetalLB)
+# Включает или выключает управление IP-адресами для сервисов LoadBalancer. 
+# Если установить false, Cilium не будет выделять IP-адреса для таких сервисов
+enableLBIPAM: false
+
+# Указываем, что по умолчанию не используется никакой IPAM для сервисов типа LoadBalancer (так как используется MetalLB)
+defaultLBServiceIPAM: "none"
