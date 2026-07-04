@@ -53,19 +53,6 @@
     k8s_repo_minor: "v{{ k8s_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
     crio_repo_minor: "v{{ crio_ver | regex_replace('^([0-9]+\\.[0-9]+).*', '\\1') }}"
 
-- name: "Resolve exact package names on first master"
-  ansible.builtin.include_tasks: resolve_packages.yml
-  delegate_to: "{{ groups['masters'][0] }}"
-
-- name: Print resolved package names
-  ansible.builtin.debug:
-    msg:
-      - "Resolved exact packages:"
-      - "kubeadm: {{ kubeadm_pkg }}"
-      - "kubelet: {{ kubelet_pkg }}"
-      - "kubectl: {{ kubectl_pkg }}"
-      - "cri-o: {{ crio_pkg }}"
-
 - name: Print current vs target versions
   ansible.builtin.debug:
     msg:

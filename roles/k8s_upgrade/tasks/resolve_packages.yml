@@ -5,6 +5,7 @@
     --qf "%{name}-%{version}-%{release}" "kubeadm-{{ k8s_ver }}*"
   register: kubeadm_query
   changed_when: false
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Get exact kubelet package name from repo
   ansible.builtin.command: >
@@ -12,6 +13,7 @@
     --qf "%{name}-%{version}-%{release}" "kubelet-{{ k8s_ver }}*"
   register: kubelet_query
   changed_when: false
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Get exact kubectl package name from repo
   ansible.builtin.command: >
@@ -19,6 +21,7 @@
     --qf "%{name}-%{version}-%{release}" "kubectl-{{ k8s_ver }}*"
   register: kubectl_query
   changed_when: false
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Get exact cri-o package name from repo
   ansible.builtin.command: >
@@ -26,6 +29,7 @@
     --qf "%{name}-%{version}-%{release}" "cri-o-{{ crio_ver }}*"
   register: crio_query
   changed_when: false
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: Clean architecture suffix and set facts on first master
   ansible.builtin.set_fact:
@@ -34,6 +38,7 @@
     kubectl_pkg: "{{ kubectl_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
     crio_pkg:   "{{ crio_query.stdout | regex_replace('\\.(x86_64|i686|aarch64|arm64|ppc64le|s390x)$', '') }}"
   delegate_facts: True
+  delegate_to: "{{ groups['masters'][0] }}"
 
 - name: "Copy resolved package names to other hosts"
   ansible.builtin.set_fact:
@@ -41,3 +46,12 @@
     kubelet_pkg: "{{ hostvars[groups['masters'][0]]['kubelet_pkg'] | default('') }}"
     kubectl_pkg: "{{ hostvars[groups['masters'][0]]['kubectl_pkg'] | default('') }}"
     crio_pkg:   "{{ hostvars[groups['masters'][0]]['crio_pkg']   | default('') }}"
+
+- name: Print resolved package names
+  ansible.builtin.debug:
+    msg:
+      - "Resolved exact packages:"
+      - "kubeadm: {{ kubeadm_pkg }}"
+      - "kubelet: {{ kubelet_pkg }}"
+      - "kubectl: {{ kubectl_pkg }}"
+      - "cri-o: {{ crio_pkg }}"
