@@ -17,7 +17,20 @@ kubectl get cm kubeadm-config -n kube-system -o yaml > /root/k8s-proxy-backup/ku
 ### 4. РЕДАКТИРОВАНИЕ KUBEADM-CONFIG (ДОБАВЛЕНИЕ proxy.disabled: true)
 #### Команда автоматически находит блок 'ClusterConfiguration' и внедряет туда параметр 'proxy.disabled: true' (валидно для K8s v1.33+)
 ```bash
-kubectl get cm kubeadm-config -n kube-system -o yaml | sed '/kind: ClusterConfiguration/a \ \ proxy:\n\ \ \ \ disabled: true' | kubectl apply -f -
+kubectl edit cm kubeadm-config -n kube-system
+
+#добавить
+# apiVersion: v1
+# kind: ConfigMap
+# data:
+#   ClusterConfiguration: |
+#     apiServer: {}
+#     apiVersion: kubeadm.k8s.io/v1beta4
+#     ...
+#     kind: ClusterConfiguration
+#     proxy:          # <- ДОБАВИТЬ ЭТУ СТРОКУ
+#       disabled: true # <- ДОБАВИТЬ ЭТУ СТРОКУ
+
 ```
 
 ### 5. УДАЛЕНИЕ CILIUM (ОЧИСТКА ВСЕХ РЕСУРСОВ ИЗ МАНИФЕСТОВ И CRD)
